@@ -57,6 +57,11 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 .part .name{font:700 22px "Big Shoulders Display",Impact,sans-serif}
 .file-btn{position:relative;overflow:hidden;display:inline-block}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.find{margin:6px 0 18px;padding-left:14px;border-left:2px solid var(--line)}
+.find p{margin:4px 0}.find a{color:var(--acid)}.find .note{font-size:13px}
+.rv{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 2px}
+.rv input{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font:inherit;min-width:240px;flex:0 1 340px}
+.rv input:focus-visible{outline:2px solid var(--mag);outline-offset:1px}
 .big{font-size:44px}
 .res{font-size:17px;line-height:1.6}
 .res b{font:900 34px "Big Shoulders Display",Impact,sans-serif;color:var(--acid)}
@@ -138,6 +143,11 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
   <h2>Songs</h2>
   <p>Choose a folder holding Clone Hero or Rock Band format song folders (notes.mid or notes.chart, song.ini, and .ogg/.opus/.mp3 audio). Your songs stay on this computer.</p>
   <span class="btn small file-btn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
+  <div class="find">
+   <p>Need songs? Browse <a href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>, download charts in Clone Hero format, unzip them, then add the folder above.</p>
+   <form id="rvForm" class="rv"><input id="rvQ" type="search" placeholder="Song or artist" aria-label="Song or artist"><button class="btn small" type="submit">Search RhythmVerse</button></form>
+   <p class="note">Opens in a new tab.</p>
+  </div>
   <div class="songs">
    <div class="list" id="songList"></div>
    <div class="detail" id="songDetail"><p>Pick a song.</p></div>
@@ -708,6 +718,11 @@ function drawCalib(){
   for(let k=Math.floor(drawT/0.5)-1;k<Math.floor(drawT/0.5)+4;k++){const dt=k*0.5-drawT;if(dt<-0.2||dt>1.2)continue;const y=lineY-dt*(lineY/1.0);
     x.strokeStyle=LANE[2];x.lineWidth=3;x.beginPath();x.ellipse(r.width/2,y,24,10,0,0,Math.PI*2);x.stroke()}
 }
+
+// ---------- RhythmVerse search (opens a site-limited web search in a new tab) ----------
+$('#rvForm').onsubmit=e=>{e.preventDefault();const q=$('#rvQ').value.trim();
+  const url=q?'https://www.google.com/search?q='+encodeURIComponent('site:rhythmverse.co '+q):'https://rhythmverse.co/songfiles/game';
+  window.open(url,'_blank','noopener')};
 
 // ---------- library ----------
 const library=[];let selSong=null;

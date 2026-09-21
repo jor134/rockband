@@ -154,7 +154,9 @@ a.btn{text-decoration:none}
   <h2>Songs</h2>
   <p>Add Clone Hero format songs (notes.mid or notes.chart, song.ini, and .ogg/.opus/.mp3 audio) as .zip downloads or unzipped folders. A folder can hold both. Your songs stay on this computer.</p>
   <div class="dirbar" id="dirBar"></div>
-  <span class="btn small file-btn">Add .zip files<input type="file" id="zipIn" accept=".zip,application/zip" multiple></span> &nbsp; <span class="btn small file-btn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
+  <span class="btn small file-btn" id="zipBtn">Add .zip files<input type="file" id="zipIn" accept=".zip,application/zip,application/x-zip-compressed" multiple></span> &nbsp; <span class="btn small file-btn" id="folderBtn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
+  <span class="btn small file-btn" id="filesBtn" hidden>Add songs<input type="file" id="filesIn" multiple></span>
+  <p class="note" id="iosHint" hidden>On iPad and iPhone, Safari can only pick files, not folders, so folders can't be selected. Pick .zip files instead. To make one from a song folder in the Files app, long-press the folder and choose Compress. You can also open a single song folder and select all of its files.</p>
   <div class="find">
    <p>Need songs? Browse <a href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>, download charts in Clone Hero format, then add the .zip files above.</p>
    <form id="rvForm" class="rv"><input id="rvQ" type="search" placeholder="Song or artist (empty = most downloaded)" aria-label="Song or artist"><button class="btn small" type="submit">Search RhythmVerse</button></form>
@@ -840,8 +842,14 @@ async function addSongFiles(items,opt={}){
   if(opt.prefix)msg=opt.prefix+msg;
   toast(msg,7000);return added;
 }
-for(const id of ['#folderIn','#zipIn'])$(id).onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;toast('Reading songs…',60000);
-  try{await addSongFiles(fs.map(f=>({path:f.webkitRelativePath||f.name,file:f})))}catch(err){toast('Could not read those files: '+err.message)}};
+const IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+if(IOS){$('#folderBtn').hidden=true;$('#zipBtn').hidden=true;$('#filesBtn').hidden=false;$('#iosHint').hidden=false}
+let pickN=0;
+for(const id of ['#folderIn','#zipIn','#filesIn'])$(id).onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;toast('Reading songs…',60000);
+  const batch='Picked songs '+(++pickN)+' ('+new Date().toLocaleTimeString()+')';
+  // files picked without a folder path (iPad/iPhone, or loose files) are treated as one song per pick
+  const items=fs.map(f=>{const rp=f.webkitRelativePath||f.name;return {path:(rp.includes('/')||/\.zip$/i.test(rp))?rp:batch+'/'+rp,file:f}});
+  try{await addSongFiles(items)}catch(err){toast('Could not read those files: '+err.message)}};
 
 // ---------- remembered songs folder (File System Access API + IndexedDB) ----------
 const idb={db:null,

@@ -141,12 +141,12 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 <section id="scr-songs" class="screen">
  <div class="panel">
   <h2>Songs</h2>
-  <p>Choose a folder holding Clone Hero or Rock Band format song folders (notes.mid or notes.chart, song.ini, and .ogg/.opus/.mp3 audio). Your songs stay on this computer.</p>
-  <span class="btn small file-btn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
+  <p>Add Clone Hero format songs (notes.mid or notes.chart, song.ini, and .ogg/.opus/.mp3 audio) as .zip downloads or unzipped folders. A folder can hold both. Your songs stay on this computer.</p>
+  <span class="btn small file-btn">Add .zip files<input type="file" id="zipIn" accept=".zip,application/zip" multiple></span> &nbsp; <span class="btn small file-btn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
   <div class="find">
-   <p>Need songs? Browse <a href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>, download charts in Clone Hero format, unzip them, then add the folder above.</p>
+   <p>Need songs? Browse <a href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>, download charts in Clone Hero format, then add the .zip files above.</p>
    <form id="rvForm" class="rv"><input id="rvQ" type="search" placeholder="Song or artist" aria-label="Song or artist"><button class="btn small" type="submit">Search RhythmVerse</button></form>
-   <p>Or grab songs from the <a href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">shared song folder</a>. Download it, unzip it, then add the folder above.</p>
+   <p>Or grab songs from the <a href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">shared song folder</a>. Download it, then add the .zip or folder above.</p>
    <p class="note">Links open in a new tab.</p>
   </div>
   <div class="songs">
@@ -384,7 +384,44 @@ function makeDemoChart(){
   const parts={guitar:gt,drums:dr,vocals:{notes:vocals,phrases}};
   return {parts,bass,bpm,start,length:lastTime(parts)+2,beats:Array.from({length:Math.ceil((lastTime(parts)+2)/spb)},(_,i)=>i*spb+(start%spb))};
 }
-if(typeof module!=='undefined')module.exports={parseMidi,tempoMap,chartFromMidi,parseChart,parseIni,detectPitch,pitchDiff,resolveBinds,makeDemoChart,median,midiOf,lastTime};
+
+// ---- zip reading (native, no library): stored + deflate, zip64 aware ----
+async function readZip(blob){
+  const size=blob.size,tl=Math.min(size,65557),tail=new DataView(await blob.slice(size-tl).arrayBuffer());
+  let e=-1;for(let i=tl-22;i>=0;i--){if(tail.getUint32(i,true)===0x06054b50){e=i;break}}
+  if(e<0)throw new Error('not a zip file');
+  let count=tail.getUint16(e+10,true),cdSize=tail.getUint32(e+12,true),cdOff=tail.getUint32(e+16,true);
+  if(count===0xFFFF||cdSize===0xFFFFFFFF||cdOff===0xFFFFFFFF){
+    const loc=e-20;if(loc<0||tail.getUint32(loc,true)!==0x07064b50)throw new Error('damaged zip');
+    const zo=Number(tail.getBigUint64(loc+8,true)),z=new DataView(await blob.slice(zo,zo+56).arrayBuffer());
+    if(z.getUint32(0,true)!==0x06064b50)throw new Error('damaged zip');
+    count=Number(z.getBigUint64(32,true));cdSize=Number(z.getBigUint64(40,true));cdOff=Number(z.getBigUint64(48,true));
+  }
+  const cd=new DataView(await blob.slice(cdOff,cdOff+cdSize).arrayBuffer()),dec=new TextDecoder(),out=[];let p=0;
+  for(let i=0;i<count&&p+46<=cd.byteLength;i++){
+    if(cd.getUint32(p,true)!==0x02014b50)throw new Error('damaged zip');
+    const flags=cd.getUint16(p+8,true),method=cd.getUint16(p+10,true),nl=cd.getUint16(p+28,true),xl=cd.getUint16(p+30,true),cl=cd.getUint16(p+32,true);
+    let comp=cd.getUint32(p+20,true),usize=cd.getUint32(p+24,true),off=cd.getUint32(p+42,true);
+    const name=dec.decode(new Uint8Array(cd.buffer,cd.byteOffset+p+46,nl)).replace(/\\/g,'/');
+    let x=p+46+nl;const xe=x+xl;
+    while(x+4<=xe){const id=cd.getUint16(x,true),sz=cd.getUint16(x+2,true);if(id===1){let q=x+4;
+      if(usize===0xFFFFFFFF){usize=Number(cd.getBigUint64(q,true));q+=8}if(comp===0xFFFFFFFF){comp=Number(cd.getBigUint64(q,true));q+=8}if(off===0xFFFFFFFF){off=Number(cd.getBigUint64(q,true))}}x+=4+sz}
+    p=xe+cl;
+    if(name.endsWith('/')||name.startsWith('__MACOSX/'))continue;
+    const en={method,comp,off,enc:!!(flags&1)};
+    const data=async()=>{
+      if(en.enc)throw new Error('password-protected zip');
+      const h=new DataView(await blob.slice(en.off,en.off+30).arrayBuffer());
+      if(h.getUint32(0,true)!==0x04034b50)throw new Error('damaged zip');
+      const st=en.off+30+h.getUint16(26,true)+h.getUint16(28,true),raw=blob.slice(st,st+en.comp);
+      if(en.method===0)return raw.arrayBuffer();
+      if(en.method===8)return new Response(raw.stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer();
+      throw new Error('unsupported zip compression (type '+en.method+')')};
+    out.push({path:name,size:usize,arrayBuffer:data,text:async()=>new TextDecoder().decode(await data())});
+  }
+  return out;
+}
+if(typeof module!=='undefined')module.exports={parseMidi,tempoMap,chartFromMidi,parseChart,parseIni,detectPitch,pitchDiff,resolveBinds,makeDemoChart,median,midiOf,lastTime,readZip};
 </script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -728,19 +765,32 @@ $('#rvForm').onsubmit=e=>{e.preventDefault();const q=$('#rvQ').value.trim();
 // ---------- library ----------
 const library=[];let selSong=null;
 const DEMO={id:'demo',title:'Backlit',artist:'Built-in demo song',demo:true};
-$('#folderIn').onchange=async e=>{
-  const files=[...e.target.files];const dirs=new Map();let sng=0,mogg=0;
-  for(const f of files){const rp=f.webkitRelativePath||f.name;const i=rp.lastIndexOf('/');const dir=i<0?'':rp.slice(0,i);const nm=rp.slice(i+1).toLowerCase();
+async function addSongFiles(files){
+  const entries=[];let sng=0,mogg=0,arch=0,badZip=[];
+  for(const f of files){const rp=(f.webkitRelativePath||f.name).replace(/\\/g,'/'),low=rp.toLowerCase();
+    if(low.endsWith('.zip')){const base=rp.replace(/\.zip$/i,'');
+      try{for(const z of await readZip(f))entries.push({path:base+'/'+z.path,file:z})}catch(err){badZip.push(f.name+' ('+err.message+')')}
+      continue}
+    if(/\.(rar|7z)$/.test(low)){arch++;continue}
+    entries.push({path:rp,file:f})}
+  const dirs=new Map();
+  for(const {path,file} of entries){const i=path.lastIndexOf('/'),dir=i<0?'':path.slice(0,i),nm=path.slice(i+1).toLowerCase();
     if(nm.endsWith('.sng'))sng++;if(nm.endsWith('.mogg'))mogg++;
-    if(!dirs.has(dir))dirs.set(dir,new Map());dirs.get(dir).set(nm,f)}
+    if(!dirs.has(dir))dirs.set(dir,new Map());dirs.get(dir).set(nm,file)}
   let added=0;
   for(const [dir,fm] of dirs){if(!fm.has('notes.mid')&&!fm.has('notes.chart'))continue;if(library.some(s=>s.id===dir))continue;
     let ini={};if(fm.has('song.ini'))try{ini=parseIni(await fm.get('song.ini').text())}catch(err){}
     library.push({id:dir,files:fm,ini,title:ini.name||dir.split('/').pop(),artist:ini.artist||''});added++}
   library.sort((a,b)=>(a.artist+a.title).localeCompare(b.artist+b.title));
   renderSongs();
-  let msg=`${added} song${added===1?'':'s'} added.`;if(sng)msg+=` ${sng} .sng packages skipped: they need unpacking first.`;if(mogg)msg+=` .mogg audio isn't supported.`;toast(msg,6000);e.target.value='';
-};
+  let msg=`${added} song${added===1?'':'s'} added.`;
+  if(arch)msg+=` ${arch} .rar/.7z file${arch>1?'s':''} skipped: extract ${arch>1?'them':'it'} first.`;
+  if(badZip.length)msg+=` Couldn't open: ${badZip.slice(0,3).join(', ')}${badZip.length>3?'…':''}.`;
+  if(sng)msg+=` ${sng} .sng packages skipped: they need unpacking first.`;if(mogg)msg+=` .mogg audio isn't supported.`;
+  if(!added&&!arch&&!badZip.length&&!sng&&!mogg)msg='No songs found. Look for folders with notes.mid or notes.chart.';
+  toast(msg,7000);
+}
+for(const id of ['#folderIn','#zipIn'])$(id).onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;toast('Reading songs…',60000);try{await addSongFiles(fs)}catch(err){toast('Could not read those files: '+err.message)}};
 function renderSongs(){
   const L=$('#songList');L.innerHTML='';
   for(const s of [DEMO,...library]){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');

@@ -73,6 +73,23 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 .fmt.ok{color:#39ff14}.fmt.no{color:var(--dim)}
 .rvrow.no b{color:var(--dim)}
 a.btn{text-decoration:none}
+.post{margin-top:18px;padding-top:6px;border-top:1px solid var(--line)}
+.post h3{font-size:28px;margin:8px 0 4px}
+.postparts{display:flex;flex-wrap:wrap;gap:4px 22px}
+.pb{color:#39ff14;font:700 18px "Big Shoulders Display",Impact,sans-serif}
+.pbold{color:var(--dim);font-size:14px}
+#bSong{min-width:280px;max-width:100%;margin:6px 0 10px}
+.tabs{display:flex;flex-wrap:wrap;gap:4px 16px;margin:2px 0}
+.tabs button{background:none;border:0;border-bottom:2px solid transparent;color:var(--dim);font:700 22px "Big Shoulders Display",Impact,sans-serif;padding:4px 0;cursor:pointer}
+.tabs button[aria-pressed="true"]{color:var(--ink);border-color:var(--mag)}
+.tabs button:hover,.tabs button:focus-visible{color:var(--acid);outline:none}
+.board{margin:12px 0;max-width:640px}
+.board table{width:100%;border-collapse:collapse;font-size:16px}
+.board th{text-align:left;color:var(--dim);font-weight:600;font-size:13px;padding:4px 6px;border-bottom:1px solid var(--line)}
+.board td{padding:7px 6px;border-bottom:1px solid var(--line)}
+.board td.r{font:900 22px "Big Shoulders Display",Impact,sans-serif;width:44px}
+.board tr:first-child td.r{color:var(--acid)}
+.board td.sc{font-weight:600;text-align:right}.board th.sc{text-align:right}
 .big{font-size:44px}
 .res{font-size:17px;line-height:1.6}
 .res b{font:900 34px "Big Shoulders Display",Impact,sans-serif;color:var(--acid)}
@@ -97,6 +114,7 @@ a.btn{text-decoration:none}
     <button class="btn" data-go="songs">Play</button>
     <button class="btn" data-go="setup">Set up instruments</button>
     <button class="btn" data-go="calib">Calibrate timing</button>
+    <button class="btn" data-go="boards">Leaderboards</button>
     <button class="btn" id="installBtn" hidden>Install app</button>
   </nav>
   <p class="hint" id="padHint"></p>
@@ -190,10 +208,30 @@ a.btn{text-decoration:none}
  <div class="panel">
   <h2 id="resTitle">Results</h2>
   <div class="row" id="resBody"></div>
-  <nav class="menu" style="margin-top:22px">
+  <div id="postBox" class="post">
+   <h3 class="display">Post to the leaderboard</h3>
+   <div id="postParts" class="postparts"></div>
+   <form id="postForm" class="rv"><input id="pName" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname"><button class="btn small" id="postBtn" type="submit">Post scores</button></form>
+   <div id="postMsg" class="status" aria-live="polite"></div>
+  </div>
+  <nav class="menu" style="margin-top:14px">
    <button class="btn" id="againBtn">Play again</button>
+   <button class="btn" id="resBoards">See leaderboard</button>
    <button class="btn" data-go="songs">Song list</button>
   </nav>
+ </div>
+</section>
+
+<section id="scr-boards" class="screen">
+ <div class="panel">
+  <h2>Leaderboards</h2>
+  <p>Top 10 for each song, instrument and difficulty.</p>
+  <select id="bSong" aria-label="Song"></select>
+  <div class="tabs" id="bPart" role="group" aria-label="Instrument"></div>
+  <div class="tabs" id="bDiff" role="group" aria-label="Difficulty"></div>
+  <div id="bTable" class="board"></div>
+  <p class="note" id="bMine"></p>
+  <button class="btn" data-go="title">Back</button>
  </div>
 </section>
 
@@ -628,7 +666,7 @@ function audio(){if(!ctx)ctx=new (window.AudioContext||window.webkitAudioContext
 
 // ---------- screens ----------
 let screen='title';
-function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}}
+function go(n){screen=n;$$('.screen').forEach(s=>s.classList.toggle('on',s.id==='scr-'+n));if(n==='setup')renderSetup();if(n==='calib')openCalib();if(n==='songs'){renderSongs();renderDirBar()}if(n==='boards')openBoards()}
 $$('[data-go]').forEach(b=>b.addEventListener('click',()=>{audio();go(b.dataset.go)}));
 
 // ---------- canvas ----------
@@ -1059,15 +1097,75 @@ function updateGame(dt){
   {const vn=G.song.parts.vocals;S.vAct=0;if(vn)for(let i=G.P.vocals?Math.max(0,G.P.vocals.next-1):0;i<vn.notes.length;i++){const n=vn.notes[i];if(n.t>now+0.5)break;if(n.end>=now-0.5){S.vAct=1;break}}}
   if(now>G.end)finishGame();
 }
+const PART_NAME={guitar:'Guitar',bass:'Bass',drums:'Drums',vocals:'Vocals'};
+const ONLINE=location.protocol.startsWith('http');
+function fnv(str){let h=0x811c9dc5;for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,0x01000193)>>>0}return h.toString(36)}
+function songId(s){if(s.sid)return s.sid;let sig='';
+  for(const k of Object.keys(s.parts).sort()){const p=s.parts[k];
+    if(k==='vocals')sig+=k+p.notes.length+':'+Math.round(p.notes.reduce((a,n)=>a+n.t,0)*100)+';';
+    else for(const d of Object.keys(p).sort())sig+=k+d+p[d].length+':'+Math.round(p[d].reduce((a,n)=>a+n.t,0)*100)+';'}
+  const slug=((s.artist&&!s.demo?s.artist+' ':'')+s.title).toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,80)||'song';
+  return s.sid=slug+'-'+fnv(sig)}
+let lastResult=null;
 function finishGame(){
-  G.running=false;lastSong=G.song;const B=$('#resBody');B.innerHTML='';let band=0;
-  for(const [k,P] of Object.entries(G.P)){band+=P.score;const acc=P.total?Math.round(100*P.hits/P.total):0;
+  G.running=false;lastSong=G.song;const song=G.song,sid=songId(song),B=$('#resBody');B.innerHTML='';let band=0;
+  const bests=store.get('best',{}),entries=[];
+  for(const [k,P] of Object.entries(G.P)){band+=P.score;const acc=P.total?Math.round(100*P.hits/P.total):0,part=k==='guitar'?P.part:k;
+    const key=sid+'|'+part+'|'+P.diff,old=bests[key],isBest=P.score>0&&(!old||P.score>old.score);
+    if(isBest)bests[key]={score:P.score,acc,streak:P.best,date:new Date().toISOString().slice(0,10)};
+    entries.push({part,diff:P.diff,score:P.score,hits:P.hits,total:P.total,streak:P.best,acc});
     const d=document.createElement('div');d.className='col res';
-    d.innerHTML=`<h3></h3><b>${acc}%</b><br>${P.hits} of ${P.total} notes<br>Best streak ${P.best}<br>Score ${P.score.toLocaleString()}<br><span style="color:var(--dim)">${P.diff}</span>`;
-    d.querySelector('h3').textContent=k==='guitar'?(P.part==='bass'?'Bass':'Guitar'):k==='drums'?'Drums':'Vocals';B.appendChild(d)}
+    d.innerHTML=`<h3></h3><b>${acc}%</b><br>${P.hits} of ${P.total} notes<br>Best streak ${P.best}<br>Score ${P.score.toLocaleString()}<br><span style="color:var(--dim)">${P.diff}</span><br>`+
+      (isBest?`<span class="pb">New personal best!</span>`:old?`<span class="pbold">Your best: ${old.score.toLocaleString()}</span>`:'');
+    d.querySelector('h3').textContent=PART_NAME[part];B.appendChild(d)}
+  store.set('best',bests);
   $('#resTitle').textContent=`Band score ${band.toLocaleString()}`;
+  lastResult={song,sid,entries,posted:false};
+  const PP=$('#postParts');PP.innerHTML='';
+  entries.forEach((e,i)=>{const l=document.createElement('label');l.className='chk';l.innerHTML=`<input type="checkbox" data-i="${i}" ${e.score>0?'checked':'disabled'}> <span></span>`;
+    l.querySelector('span').textContent=`${PART_NAME[e.part]} · ${e.diff} · ${e.score.toLocaleString()}`;PP.appendChild(l)});
+  $('#pName').value=store.get('name','');$('#postBtn').disabled=false;
+  $('#postMsg').textContent=ONLINE?'':'Posting works on your live site, not when opened as a file.';$('#postBtn').disabled=!ONLINE;
   setTimeout(()=>{stopGame();G=null;go('results')},400);
 }
+async function api(method,body,qs){
+  const r=await fetch('/api/scores'+(qs?'?'+new URLSearchParams(qs):''),method==='GET'?{}:{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('error '+r.status));return j}
+$('#postForm').onsubmit=async e=>{e.preventDefault();const R=lastResult;if(!R||R.posted)return;
+  const name=$('#pName').value.trim();if(!name){$('#postMsg').textContent='Enter a name first.';$('#pName').focus();return}
+  const pick=[...$$('#postParts input:checked')].map(x=>R.entries[+x.dataset.i]);if(!pick.length){$('#postMsg').textContent='Tick at least one score.';return}
+  store.set('name',name);$('#postBtn').disabled=true;$('#postMsg').textContent='Posting…';
+  try{const j=await api('POST',{song:{id:R.sid,title:R.song.title,artist:R.song.demo?'':R.song.artist},name,entries:pick});R.posted=true;
+    $('#postMsg').textContent=j.ranks.map(x=>`${PART_NAME[x.part]} ${x.diff}: ${x.rank?'#'+x.rank:'outside the top 100'}`).join(' · ')}
+  catch(err){$('#postBtn').disabled=false;$('#postMsg').textContent='Could not post: '+err.message}};
+$('#resBoards').onclick=()=>{const R=lastResult;if(R&&R.entries.length){const e=R.entries.slice().sort((a,b)=>b.score-a.score)[0];boardSel={sid:R.sid,part:e.part,diff:e.diff}}go('boards')};
+
+// ---------- leaderboard screen ----------
+let boardSel={sid:null,part:'drums',diff:'expert'},boardSongs=[];
+function tabs(el,items,cur,fn){el.innerHTML='';for(const [v,label] of items){const b=document.createElement('button');b.textContent=label;b.setAttribute('aria-pressed',v===cur);b.onclick=()=>fn(v);el.appendChild(b)}}
+async function openBoards(){
+  const sel=$('#bSong');
+  if(!ONLINE){sel.hidden=true;$('#bTable').textContent='Leaderboards work on your live site, not when opened as a file.';renderMine();return}
+  sel.hidden=false;
+  try{boardSongs=(await api('GET',null,{list:'songs'})).songs}catch(err){boardSongs=[];$('#bTable').textContent='Leaderboard unavailable: '+err.message}
+  const lr=lastResult;if(lr&&!boardSongs.some(x=>x.id===lr.sid))boardSongs.unshift({id:lr.sid,title:lr.song.title,artist:lr.song.demo?'':lr.song.artist});
+  sel.innerHTML='';if(!boardSongs.length){sel.hidden=true;$('#bTable').textContent='No scores posted yet. Finish a song and post one.';return}
+  for(const x of boardSongs){const o=document.createElement('option');o.value=x.id;o.textContent=x.title+(x.artist?' — '+x.artist:'');sel.appendChild(o)}
+  if(!boardSongs.some(x=>x.id===boardSel.sid))boardSel.sid=boardSongs[0].id;sel.value=boardSel.sid;sel.onchange=()=>{boardSel.sid=sel.value;loadBoard()};
+  loadBoard();
+}
+async function loadBoard(){
+  tabs($('#bPart'),Object.entries(PART_NAME),boardSel.part,v=>{boardSel.part=v;loadBoard()});
+  tabs($('#bDiff'),DIFFS.map(d=>[d,d]),boardSel.diff,v=>{boardSel.diff=v;loadBoard()});
+  renderMine();const T=$('#bTable');if(!ONLINE||!boardSel.sid)return;T.textContent='Loading…';
+  try{const {rows}=await api('GET',null,{song:boardSel.sid,part:boardSel.part,diff:boardSel.diff});
+    if(!rows.length){T.textContent='No scores here yet.';return}
+    const tb=document.createElement('table');tb.innerHTML='<thead><tr><th></th><th>Name</th><th>Accuracy</th><th>Streak</th><th class="sc">Score</th></tr></thead><tbody></tbody>';
+    rows.forEach((r,i)=>{const tr=document.createElement('tr');tr.innerHTML=`<td class="r">${i+1}</td><td class="n"></td><td>${r.acc}%</td><td>${r.streak}</td><td class="sc">${r.score.toLocaleString()}</td>`;tr.querySelector('.n').textContent=r.name;tr.title=r.date||'';tb.tBodies[0].appendChild(tr)});
+    T.innerHTML='';T.appendChild(tb)}
+  catch(err){T.textContent='Leaderboard unavailable: '+err.message}
+}
+function renderMine(){const b=store.get('best',{})[boardSel.sid+'|'+boardSel.part+'|'+boardSel.diff];$('#bMine').textContent=b?`Your best on this device: ${b.score.toLocaleString()} (${b.acc}%)`:''}
 
 // ---------- stage (silhouette video) ----------
 const S={beatN:0,dDen:0,gDen:0,vAct:0,pulse:0,kick:0,arm:[0,0],armI:0,cym:0,strumK:0,gLight:0,dLight:0,vLevel:0,bob:0,

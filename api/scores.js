@@ -1,5 +1,8 @@
 // BACKLIT leaderboards. Vercel serverless function backed by Upstash Redis (REST).
-// Requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN in Vercel environment variables.
+// Needs a REST URL + token for Upstash Redis. Any of these naming schemes works:
+//   UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN   (Upstash console)
+//   KV_REST_API_URL / KV_REST_API_TOKEN                 (Vercel Storage > Upstash, incl. old Vercel KV)
+//   <PREFIX>_KV_REST_API_URL / <PREFIX>_KV_REST_API_TOKEN (Vercel Storage with a custom prefix)
 // GET  /api/scores?list=songs                          -> songs that have scores
 // GET  /api/scores?song=ID&part=drums&diff=expert      -> top 10
 // POST /api/scores {song:{id,title,artist},name,entries:[{part,diff,score,hits,total,streak}]} -> ranks
@@ -7,10 +10,29 @@ const PARTS = new Set(['guitar', 'bass', 'drums', 'vocals']);
 const DIFFS = new Set(['easy', 'medium', 'hard', 'expert']);
 const KEEP = 100, SHOW = 10, POSTS_PER_HOUR = 30;
 
+function dbConfig() {
+  const env = process.env;
+  if (env.UPSTASH_REDIS_REST_URL && env.UPSTASH_REDIS_REST_TOKEN) return { url: env.UPSTASH_REDIS_REST_URL, token: env.UPSTASH_REDIS_REST_TOKEN };
+  if (env.KV_REST_API_URL && env.KV_REST_API_TOKEN) return { url: env.KV_REST_API_URL, token: env.KV_REST_API_TOKEN };
+  for (const k of Object.keys(env)) {
+    if (k.endsWith('_KV_REST_API_URL')) { const t = env[k.replace(/_URL$/, '_TOKEN')]; if (env[k] && t) return { url: env[k], token: t }; }
+    if (k.endsWith('_REDIS_REST_URL')) { const t = env[k.replace(/_URL$/, '_TOKEN')]; if (env[k] && t) return { url: env[k], token: t }; }
+  }
+  return null;
+}
+// explain what's missing without revealing any values
+function whyMissing() {
+  const names = Object.keys(process.env).filter(k => /REDIS|KV_|UPSTASH/.test(k));
+  if (!names.length) return 'no database variables found. Connect the Upstash database to this project in Vercel Storage, then redeploy';
+  if (names.some(k => /REDIS_URL$|KV_URL$/.test(k)) && !names.some(k => /REST/.test(k)))
+    return 'found ' + names.join(', ') + ' but no REST URL/token. This database type needs Upstash for Redis (it provides KV_REST_API_URL and KV_REST_API_TOKEN)';
+  return 'found ' + names.join(', ') + ' but no matching REST URL + token pair';
+}
+let DB = null;
 async function redis(cmds) {
-  const r = await fetch(process.env.UPSTASH_REDIS_REST_URL.replace(/\/$/, '') + '/pipeline', {
+  const r = await fetch(DB.url.replace(/\/$/, '') + '/pipeline', {
     method: 'POST',
-    headers: { Authorization: 'Bearer ' + process.env.UPSTASH_REDIS_REST_TOKEN, 'Content-Type': 'application/json' },
+    headers: { Authorization: 'Bearer ' + DB.token, 'Content-Type': 'application/json' },
     body: JSON.stringify(cmds)
   });
   if (!r.ok) throw new Error('database error ' + r.status);
@@ -31,8 +53,8 @@ function rowsFrom(flat) {
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
-  if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN)
-    return res.status(500).json({ error: 'leaderboard database is not set up on Vercel' });
+  DB = dbConfig();
+  if (!DB) return res.status(500).json({ error: 'leaderboard database not connected: ' + whyMissing() });
 
   // same-site only
   const host = req.headers.host || '', from = req.headers.origin || req.headers.referer || '';

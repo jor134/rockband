@@ -57,21 +57,16 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 .part .name{font:700 22px "Big Shoulders Display",Impact,sans-serif}
 .file-btn{position:relative;overflow:hidden;display:inline-block}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
-.find{margin:6px 0 18px;padding-left:14px;border-left:2px solid var(--line)}
-.find p{margin:4px 0}.find a{color:var(--acid)}.find .note{font-size:13px}
 .rv{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 2px}
 .rv input{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font:inherit;min-width:240px;flex:0 1 340px}
 .rv input:focus-visible{outline:2px solid var(--mag);outline-offset:1px}
+.songbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 28px;margin:8px 0 6px}
+.addwrap{position:relative}
+.addmenu{position:absolute;top:100%;left:0;z-index:5;background:#000;border:1px solid var(--mag);padding:6px 14px;display:flex;flex-direction:column;align-items:flex-start;white-space:nowrap;box-shadow:0 0 18px rgba(255,43,214,.35)}
+.addmenu[hidden]{display:none}
+.dirbar:empty{display:none}
 .dirbar{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;margin:4px 0 10px}
 .dirbar .name{color:var(--acid);font-weight:600}
-.rvlist{max-height:40vh;overflow:auto;margin:6px 0}
-.rvrow{display:flex;justify-content:space-between;gap:14px;align-items:center;padding:8px 4px;border-bottom:1px solid var(--line)}
-.rvrow b{display:block;font:700 20px "Big Shoulders Display",Impact,sans-serif}
-.rvrow .meta{color:var(--dim);font-size:13px}
-.rvrow .acts{display:flex;align-items:center;gap:12px;flex-shrink:0}
-.fmt{font-size:12px;padding:2px 7px;border:1px solid currentColor;border-radius:3px;white-space:nowrap}
-.fmt.ok{color:#39ff14}.fmt.no{color:var(--dim)}
-.rvrow.no b{color:var(--dim)}
 a.btn{text-decoration:none}
 .post{margin-top:18px;padding-top:6px;border-top:1px solid var(--line)}
 .post h3{font-size:28px;margin:8px 0 4px}
@@ -170,21 +165,22 @@ a.btn{text-decoration:none}
 <section id="scr-songs" class="screen">
  <div class="panel">
   <h2>Songs</h2>
-  <p>Add Clone Hero format songs (notes.mid or notes.chart, song.ini, and .ogg/.opus/.mp3 audio) as .zip downloads or unzipped folders. A folder can hold both. Your songs stay on this computer.</p>
-  <div class="dirbar" id="dirBar"></div>
-  <span class="btn small file-btn" id="zipBtn">Add .zip files<input type="file" id="zipIn" accept=".zip,application/zip,application/x-zip-compressed" multiple></span> &nbsp; <span class="btn small file-btn" id="folderBtn">Add song folder<input type="file" id="folderIn" webkitdirectory multiple></span>
-  <span class="btn small file-btn" id="filesBtn" hidden>Add songs<input type="file" id="filesIn" multiple></span>
-  <p class="note" id="iosHint" hidden>On iPad and iPhone, Safari can only pick files, not folders, so folders can't be selected. Pick .zip files instead. To make one from a song folder in the Files app, long-press the folder and choose Compress. You can also open a single song folder and select all of its files.</p>
-  <div class="find">
-   <p>Need songs? Browse <a href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>, download charts in Clone Hero format, then add the .zip files above.</p>
-   <form id="rvForm" class="rv"><input id="rvQ" type="search" placeholder="Song or artist (empty = most downloaded)" aria-label="Song or artist"><button class="btn small" type="submit">Search RhythmVerse</button></form>
-   <label class="chk note"><input type="checkbox" id="rvOnly" checked> Clone Hero format only</label>
-   <div id="rvStatus" class="note" aria-live="polite"></div>
-   <div id="rvResults" class="rvlist"></div>
-   <button class="btn small" id="rvMore" hidden>More results</button>
-   <p>Or grab songs from the <a href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">shared song folder</a>. Download it, then add the .zip or folder above.</p>
-   <p class="note">Downloads open RhythmVerse in a new tab. Save them into your songs folder and they load when you come back.</p>
+  <p>Clone Hero format songs: .zip downloads, song folders, or files from iCloud and Google Drive.</p>
+  <div class="songbar">
+   <div class="addwrap">
+    <button class="btn small" id="addSongBtn" aria-haspopup="true" aria-expanded="false">Add song</button>
+    <div class="addmenu" id="addMenu" hidden>
+     <button class="btn small" id="addFolder">Songs folder</button>
+     <button class="btn small" id="addFiles">Zip or song files</button>
+    </div>
+   </div>
+   <a class="btn small" href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>
+   <a class="btn small" href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">Google Drive</a>
+   <a class="btn small" href="https://www.icloud.com/iclouddrive/009mqU8h-LI-o7VmPOGfngOqQ#Rockband" target="_blank" rel="noopener">iCloud</a>
   </div>
+  <div class="dirbar" id="dirBar"></div>
+  <input type="file" id="folderIn" webkitdirectory multiple hidden>
+  <input type="file" id="filesIn" multiple hidden>
   <div class="songs">
    <div class="list" id="songList"></div>
    <div class="detail" id="songDetail"><p>Pick a song.</p></div>
@@ -814,42 +810,7 @@ function drawCalib(){
 }
 
 // ---------- RhythmVerse search (opens a site-limited web search in a new tab) ----------
-const RV_FMT={ch:'Clone Hero'};const RV_OK=new Set(['ch']);
-const rv={q:'',page:1,total:0,rows:[],cache:new Map()};
-const googleRV=q=>window.open(q?'https://www.google.com/search?q='+encodeURIComponent('site:rhythmverse.co '+q):'https://rhythmverse.co/songfiles/game','_blank','noopener');
-async function rvFetch(q,page){
-  const key=q.toLowerCase()+'|'+page;if(rv.cache.has(key))return rv.cache.get(key);
-  const r=await fetch('/api/rv-search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q,page})});
-  const j=await r.json().catch(()=>({}));if(!r.ok)throw new Error(j.error||('search failed ('+r.status+')'));
-  rv.cache.set(key,j);return j;
-}
-const fmtLen=s=>s?Math.floor(s/60)+':'+String(Math.round(s%60)).padStart(2,'0'):'';
-function renderRV(){
-  const only=$('#rvOnly').checked,L=$('#rvResults');L.innerHTML='';
-  const rows=rv.rows.filter(x=>!only||RV_OK.has(x.format)).sort((a,b)=>RV_OK.has(b.format)-RV_OK.has(a.format));
-  for(const x of rows){const ok=RV_OK.has(x.format),d=document.createElement('div');d.className='rvrow'+(ok?'':' no');
-    const df=[['Gtr',x.diffs.guitar],['Bass',x.diffs.bass],['Drums',x.diffs.drums],['Vox',x.diffs.vocals]].map(([n,v])=>n+' '+(v?v:'–')).join(' · ');
-    d.innerHTML='<div><b></b><div class="meta m1"></div><div class="meta m2"></div></div><div class="acts"><span class="fmt"></span></div>';
-    d.querySelector('b').textContent=x.title;
-    d.querySelector('.m1').textContent=[x.artist,fmtLen(x.length),x.author?'charted by '+x.author:''].filter(Boolean).join(' · ');
-    d.querySelector('.m2').textContent=df+(x.downloads?' · '+x.downloads.toLocaleString()+' downloads':'');
-    const f=d.querySelector('.fmt');f.className='fmt '+(ok?'ok':'no');f.textContent=ok?RV_FMT[x.format]:(x.format?x.format.toUpperCase():'Unknown')+' · won’t load';
-    if(x.page_url){const a=document.createElement('a');a.className='btn small';a.href=x.page_url;a.target='_blank';a.rel='noopener';a.textContent='Download';d.querySelector('.acts').appendChild(a)}
-    L.appendChild(d)}
-  const hidden=rv.rows.length-rows.length;
-  $('#rvStatus').textContent=rv.rows.length?`${rows.length} shown${hidden?`, ${hidden} in other formats hidden`:''} · ${rv.total.toLocaleString()} total matches`:'No matches.';
-  $('#rvMore').hidden=!(rv.page*25<rv.total);
-}
-async function rvSearch(q,page){
-  $('#rvStatus').textContent='Searching…';$('#rvMore').hidden=true;
-  try{const d=await rvFetch(q,page);rv.q=q;rv.page=page;rv.total=d.total||0;rv.rows=page===1?d.songs:rv.rows.concat(d.songs);renderRV()}
-  catch(err){$('#rvStatus').textContent='In-game search unavailable: '+err.message+'. ';const a=document.createElement('a');a.href='#';a.textContent='Search the web instead';a.style.color='var(--acid)';a.onclick=ev=>{ev.preventDefault();googleRV(q)};$('#rvStatus').appendChild(a)}
-}
-$('#rvForm').onsubmit=e=>{e.preventDefault();const q=$('#rvQ').value.trim();
-  if(!location.protocol.startsWith('http')){googleRV(q);return}
-  rvSearch(q,1)};
-$('#rvMore').onclick=()=>rvSearch(rv.q,rv.page+1);
-$('#rvOnly').onchange=renderRV;
+
 
 // ---------- library ----------
 const library=[];let selSong=null;
@@ -881,9 +842,15 @@ async function addSongFiles(items,opt={}){
   toast(msg,7000);return added;
 }
 const IOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
-if(IOS){$('#folderBtn').hidden=true;$('#zipBtn').hidden=true;$('#filesBtn').hidden=false;$('#iosHint').hidden=false}
+const addMenu=$('#addMenu'),addBtn=$('#addSongBtn');
+const setMenu=open=>{addMenu.hidden=!open;addBtn.setAttribute('aria-expanded',open)};
+addBtn.onclick=e=>{e.stopPropagation();if(IOS){$('#filesIn').click();return}setMenu(addMenu.hidden)};
+$('#addFolder').onclick=()=>{setMenu(false);if(window.showDirectoryPicker)chooseSongDir();else $('#folderIn').click()};
+$('#addFiles').onclick=()=>{setMenu(false);$('#filesIn').click()};
+document.addEventListener('click',e=>{if(!addMenu.hidden&&!e.target.closest('.addwrap'))setMenu(false)});
+addEventListener('keydown',e=>{if(e.code==='Escape'&&!addMenu.hidden)setMenu(false)});
 let pickN=0;
-for(const id of ['#folderIn','#zipIn','#filesIn'])$(id).onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;toast('Reading songs…',60000);
+for(const id of ['#folderIn','#filesIn'])$(id).onchange=async e=>{const fs=[...e.target.files];e.target.value='';if(!fs.length)return;toast('Reading songs…',60000);
   const batch='Picked songs '+(++pickN)+' ('+new Date().toLocaleTimeString()+')';
   // files picked without a folder path (iPad/iPhone, or loose files) are treated as one song per pick
   const items=fs.map(f=>{const rp=f.webkitRelativePath||f.name;return {path:(rp.includes('/')||/\.zip$/i.test(rp))?rp:batch+'/'+rp,file:f}});
@@ -920,10 +887,10 @@ function renderDirBar(){
   const B=$('#dirBar');if(!window.showDirectoryPicker){B.innerHTML='';return}
   const mk=(txt,fn)=>{const b=document.createElement('button');b.className='btn small';b.textContent=txt;b.onclick=fn;return b};
   B.innerHTML='';
-  if(!songDir.handle){B.append(mk('Choose songs folder',chooseSongDir));const n=document.createElement('span');n.className='note';n.textContent='Chrome remembers it and loads your songs every time.';B.append(n);return}
+  if(!songDir.handle)return;
   const lab=document.createElement('span');lab.innerHTML='Songs folder: <span class="name"></span>';lab.querySelector('.name').textContent=songDir.handle.name;B.append(lab);
   if(songDir.state!=='granted'){B.append(mk('Reconnect',reconnectSongDir));const n=document.createElement('span');n.className='note';n.textContent='Chrome needs one click to allow access again.';B.append(n)}
-  else{const n=document.createElement('span');n.className='note';n.textContent=`${library.filter(s=>s.src==='saved').length} songs`;B.append(n,mk('Rescan',()=>scanSongDir(false)),mk('Change',chooseSongDir))}
+  else{const n=document.createElement('span');n.className='note';n.textContent=`${library.filter(s=>s.src==='saved').length} songs`;B.append(n,mk('Rescan',()=>scanSongDir(false)))}
   B.append(mk('Forget',forgetSongDir));
 }
 (async()=>{

@@ -60,6 +60,9 @@ label.chk{display:flex;align-items:center;gap:8px;margin:6px 0;color:var(--ink)}
 .rv{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0 2px}
 .rv input{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font:inherit;min-width:240px;flex:0 1 340px}
 .rv input:focus-visible{outline:2px solid var(--mag);outline-offset:1px}
+.fambox{margin:4px 0 10px;padding-left:14px;border-left:2px solid var(--cyan)}
+.fambox input{background:#000;color:var(--ink);border:1px solid var(--line);border-radius:3px;padding:8px 10px;font:inherit;min-width:180px}
+.song .srv{color:var(--cyan)}
 .songbar{display:flex;flex-wrap:wrap;align-items:flex-start;gap:4px 28px;margin:8px 0 6px}
 .addwrap{position:relative}
 .addmenu{position:absolute;top:100%;left:0;z-index:5;background:#000;border:1px solid var(--mag);padding:6px 14px;display:flex;flex-direction:column;align-items:flex-start;white-space:nowrap;box-shadow:0 0 18px rgba(255,43,214,.35)}
@@ -177,6 +180,12 @@ a.btn{text-decoration:none}
    <a class="btn small" href="https://rhythmverse.co/songfiles/game" target="_blank" rel="noopener">RhythmVerse</a>
    <a class="btn small" href="https://drive.google.com/drive/folders/1ySs9MbRK6UMnPg1ciZH6JvrKAwcOaqze?usp=drive_link" target="_blank" rel="noopener">Google Drive</a>
    <a class="btn small" href="https://www.icloud.com/iclouddrive/009mqU8h-LI-o7VmPOGfngOqQ#Rockband" target="_blank" rel="noopener">iCloud</a>
+   <button class="btn small" id="famBtn" aria-expanded="false">Family server</button>
+  </div>
+  <div class="fambox" id="famBox" hidden>
+   <form id="famForm" class="rv"><input id="famName" maxlength="16" placeholder="Your name" aria-label="Your name" autocomplete="nickname"><input id="famPass" type="password" placeholder="Family password" aria-label="Family password" autocomplete="current-password"><button class="btn small" type="submit">Sign in</button></form>
+   <div id="famIn" hidden><span id="famWho"></span> &nbsp; <button class="btn small" id="famRefresh">Refresh</button> <button class="btn small" id="famOut">Sign out</button></div>
+   <div id="famMsg" class="note" aria-live="polite"></div>
   </div>
   <div class="dirbar" id="dirBar"></div>
   <input type="file" id="folderIn" webkitdirectory multiple hidden>
@@ -902,7 +911,9 @@ addEventListener('focus',()=>{if(songDir.state==='granted'&&!(G&&G.running)&&Dat
 function renderSongs(){
   const L=$('#songList');L.innerHTML='';
   for(const s of [DEMO,...library]){const b=document.createElement('button');b.className='song'+(selSong&&selSong.id===s.id?' sel':'');
-    b.innerHTML=`<b></b><span></span>`;b.querySelector('b').textContent=s.title;b.querySelector('span').textContent=s.artist;b.onclick=()=>selectSong(s);L.appendChild(b)}
+    b.innerHTML=`<b></b><span></span>`;b.querySelector('b').textContent=s.title;const sp=b.querySelector('span');
+    if(s.src==='server'){sp.className='srv';sp.textContent=[s.artist,s.files?'family server':`family server · ${Math.round((s.server.size||0)/1048576)} MB${s.cached?' · downloaded':''}`].filter(Boolean).join(' · ')}else sp.textContent=s.artist;
+    b.onclick=()=>selectSong(s);L.appendChild(b)}
 }
 async function loadChart(s){
   if(s.parts)return;
@@ -916,6 +927,7 @@ async function loadChart(s){
 const cfgMem=store.get('cfg',{guitar:{on:true,part:'guitar',diff:'medium'},drums:{on:true,diff:'medium'},vocals:{on:true,diff:'medium'}});
 async function selectSong(s){
   selSong=s;renderSongs();const D=$('#songDetail');D.innerHTML='<p>Reading chart…</p>';
+  if(s.src==='server'&&!s.files){try{await famDownload(s,f=>{D.innerHTML=`<p>Downloading from the family server… ${Math.round(f*100)}%</p>`})}catch(err){D.innerHTML='';const p=document.createElement('p');p.textContent='Download failed: '+err.message;D.appendChild(p);return}renderSongs();D.innerHTML='<p>Reading chart…</p>'}
   try{await loadChart(s)}catch(err){D.innerHTML='';const p=document.createElement('p');p.textContent='This chart could not be read: '+err.message;D.appendChild(p);return}
   const P=s.parts,has=k=>!!P[k];
   const diffOpts=(avail,cur)=>DIFFS.filter(d=>avail.includes(d)).map(d=>`<option ${d===cur?'selected':''}>${d}</option>`).join('');
@@ -1308,6 +1320,59 @@ $('#installBtn').onclick=async()=>{if(!deferredPrompt)return;deferredPrompt.prom
 addEventListener('appinstalled',()=>{$('#installBtn').hidden=true;toast('Installed. BACKLIT now opens in its own window.')});
 if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
 addEventListener('gamepadconnected',e=>toast('Controller connected: '+e.gamepad.id.slice(0,50)));
+
+// ---------- family song server (sign-in + R2 downloads, cached in the browser) ----------
+const fam={name:null};
+async function famApi(method,params,body){
+  const r=await fetch('/api/family?'+new URLSearchParams(params),method==='GET'?{credentials:'same-origin'}:{method,credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+  const j=await r.json().catch(()=>({}));if(!r.ok){const e=new Error(j.error||('error '+r.status));e.status=r.status;throw e}return j}
+const famCacheKey=s=>location.origin+'/__srv/'+encodeURIComponent(s.server.key)+'?e='+encodeURIComponent(s.server.etag||s.server.size);
+const famCache=()=>('caches' in window)?caches.open('backlit-server').catch(()=>null):Promise.resolve(null);
+function songNameFromKey(key){const base=key.split('/').pop().replace(/\.zip$/i,''),i=base.indexOf(' - ');return i>0?{artist:base.slice(0,i).trim(),title:base.slice(i+3).trim()}:{artist:'',title:base}}
+async function famLoadList(){
+  const {songs}=await famApi('GET',{action:'list'}),cache=await famCache();
+  for(let i=library.length-1;i>=0;i--)if(library[i].src==='server'&&!library[i].files)library.splice(i,1);
+  let n=0;
+  for(const x of songs){if(library.some(s=>s.server&&s.server.key===x.key))continue;
+    const s=Object.assign({id:'srv:'+x.key,src:'server',server:x},songNameFromKey(x.key));
+    if(cache)try{s.cached=!!(await cache.match(famCacheKey(s)))}catch(e){}
+    library.push(s);n++}
+  library.sort((a,b)=>(a.artist+a.title).localeCompare(b.artist+b.title));renderSongs();return songs.length;
+}
+async function famDownload(s,progress){
+  const cache=await famCache(),ck=famCacheKey(s);let blob=null;
+  if(cache){const hit=await cache.match(ck).catch(()=>null);if(hit)blob=await hit.blob()}
+  if(!blob){
+    const {url}=await famApi('GET',{action:'url',key:s.server.key});
+    const r=await fetch(url);if(!r.ok)throw new Error('storage returned '+r.status);
+    const total=+r.headers.get('content-length')||s.server.size||0,rd=r.body.getReader(),chunks=[];let got=0;
+    for(;;){const {done,value}=await rd.read();if(done)break;chunks.push(value);got+=value.length;if(total)progress(Math.min(1,got/total))}
+    blob=new Blob(chunks,{type:'application/zip'});
+    if(cache)try{await cache.put(ck,new Response(blob));s.cached=true}catch(e){}
+  }
+  const dirs=new Map();
+  for(const z of await readZip(blob)){const i=z.path.lastIndexOf('/'),dir=i<0?'':z.path.slice(0,i),nm=z.path.slice(i+1).toLowerCase();if(!dirs.has(dir))dirs.set(dir,new Map());dirs.get(dir).set(nm,z)}
+  const found=[...dirs].filter(([d,fm])=>fm.has('notes.mid')||fm.has('notes.chart'));
+  if(!found.length)throw new Error('no song inside this zip');
+  let first=true;
+  for(const [dir,fm] of found){let ini={};if(fm.has('song.ini'))try{ini=parseIni(await fm.get('song.ini').text())}catch(e){}
+    const meta={files:fm,ini,title:ini.name||(first?s.title:dir.split('/').pop()),artist:ini.artist||s.artist};
+    if(first){Object.assign(s,meta);first=false}else library.push(Object.assign({id:s.id+'/'+dir,src:'server',server:s.server},meta))}
+}
+function renderFam(){
+  const inn=!!fam.name;$('#famForm').hidden=inn;$('#famIn').hidden=!inn;if(inn)$('#famWho').textContent='Signed in as '+fam.name;
+  $('#famBtn').textContent=inn?'Family server ✓':'Family server';
+}
+$('#famBtn').onclick=()=>{const B=$('#famBox'),open=B.hidden;B.hidden=!open;$('#famBtn').setAttribute('aria-expanded',open);
+  if(open&&!ONLINE)$('#famMsg').textContent='The family server works on your live site, not when opened as a file.';
+  if(open&&!fam.name){$('#famName').value=$('#famName').value||store.get('name','');($('#famName').value?$('#famPass'):$('#famName')).focus()}};
+$('#famForm').onsubmit=async e=>{e.preventDefault();if(!ONLINE)return;const M=$('#famMsg');M.textContent='Signing in…';
+  try{const j=await famApi('POST',{action:'login'},{name:$('#famName').value,password:$('#famPass').value});fam.name=j.name;store.set('name',j.name);$('#famPass').value='';renderFam();
+    const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the family server.`;setTimeout(()=>{$('#famBox').hidden=true},1200)}
+  catch(err){M.textContent='Could not sign in: '+err.message}};
+$('#famRefresh').onclick=async()=>{const M=$('#famMsg');M.textContent='Checking…';try{const n=await famLoadList();M.textContent=`${n} song${n===1?'':'s'} on the family server.`}catch(err){if(err.status===401){fam.name=null;renderFam()}M.textContent='Could not refresh: '+err.message}};
+$('#famOut').onclick=async()=>{try{await famApi('POST',{action:'logout'})}catch(e){}fam.name=null;for(let i=library.length-1;i>=0;i--)if(library[i].src==='server')library.splice(i,1);renderSongs();renderFam();$('#famMsg').textContent='Signed out.'};
+(async()=>{if(!ONLINE)return;try{fam.name=(await famApi('GET',{action:'me'})).name;renderFam();await famLoadList()}catch(e){renderFam()}})();
 </script>
 </body>
 </html>
